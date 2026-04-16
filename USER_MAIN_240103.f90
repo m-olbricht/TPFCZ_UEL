@@ -48,6 +48,8 @@ SUBROUTINE uel(rhs,amatrx,svars,energy,ndofel,nrhs,nsvars,props,nprops,coords, &
   ! dummies
   amatrx=zero; rhs(1:ndofel,1)=zero
 
+!~   write(*,*) '================GENERAL UEL called======================'
+  
   IF ( jtype .LE. 10 ) THEN
     ! phase field element
     CALL PFUEL(rhs,amatrx,svars,energy,ndofel,nrhs,nsvars,props,nprops,coords, &

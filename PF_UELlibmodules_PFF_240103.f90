@@ -171,6 +171,17 @@ MODULE BMatrixJDet
           END DO
         END DO
 
+		! temperatur and gradients
+        DO i2=1,1
+          DO i1=1,nnode
+            Matrix_B(ndi+nshr+D+1+(i2-1)*(D+1)+1, (i1-1)*ndofel/nnode+D+1+i2 ) = shapeFunctions(i1)
+            ! Ableitung nach allen D-Richtungen
+            FORALL (i3=1:D)
+              Matrix_B(ndi+nshr+D+1+(i2-1)*(D+1)+1+i3, (i1-1)*ndofel/nnode+D+1+i2 ) = transformedShapeFuncDerivatives(i3,i1)
+            END FORALL
+          END DO
+        END DO
+
         ! Transformationsmatrix
         drot = zero
         SELECT CASE(D)
