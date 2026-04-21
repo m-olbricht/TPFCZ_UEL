@@ -46,7 +46,7 @@ MODULE AliasModulePF
                                                HFEDneg => HFEDnegNoSplit, &
                                                d_HFEDneg_d_eps_e => d_HFEDnegNoSplit_d_eps_e, &
                                                d_HFEDneg_d_eps_e_d_eps_e => d_HFEDnegNoSplit_d_eps_e_d_eps_e
-
+  USE SplitModulePF, ONLY: eps_elast 
 
 
 
@@ -57,6 +57,7 @@ MODULE AliasModulePF
    PUBLIC :: IED, d_IED_d_damage, d_IED_d_damage_d_damage
    PUBLIC :: Degradation, d_Degradation_d_damage, d_Degradation_d_damage_d_damage
    PUBLIC :: HFEDpos, d_HFEDpos_d_eps_e, d_HFEDpos_d_eps_e_d_eps_e, HFEDneg, d_HFEDneg_d_eps_e, d_HFEDneg_d_eps_e_d_eps_e
+   PUBLIC :: eps_elast
    
 
 END MODULE AliasModulePF

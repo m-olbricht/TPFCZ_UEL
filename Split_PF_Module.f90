@@ -28,27 +28,49 @@ MODULE SplitModulePF
 
   CONTAINS
 
-!------------------------------------------------------------------------------------
+!------------------------------------------------------------------------------------!
 
-    PURE REAL(kind=AbqRK) FUNCTION eps_e(eps)
+    PURE REAL(kind=AbqRK) FUNCTION eps_elast(eps,dTemperature,nHFEDpar,parHFEDMatrixPhase,nThermalpar,parThermalMatrixPhase)
     ! elastic strain
-
+      
       IMPLICIT NONE
+      
+      INTEGER(kind=AbqIK), INTENT(IN) :: nThermalpar,nHFEDpar
+      REAL(kind=AbqRK), INTENT(IN) :: parThermalMatrixPhase(nThermalpar), parHFEDMatrixPhase(nHFEDpar)
       REAL(kind=AbqRK), INTENT(IN) :: eps(3,3)
-      DIMENSION eps_e(3,3)
+      REAL(kind=AbqRK), INTENT(IN) :: dTemperature
       !
-      eps_e = eps
- 
-    END FUNCTION eps_e
+      INTEGER(kind=AbqIK) :: i1
+      REAL(kind=AbqRK) :: therm_exp
+      REAL(kind=AbqRK) :: eps_temperature(3,3)
+      !
+      DIMENSION :: eps_elast(3,3)
+      !
+      !
+      therm_exp = parThermalMatrixPhase(5)
+      !
+	  eps_temperature = zero
+	  !
+	  !
+	  FORALL (i1=1:3)
+	    eps_temperature(i1,i1) = therm_exp * dTemperature
+	  END FORALL
+      !
+      eps_elast = eps - eps_temperature
+      
+      
+    END FUNCTION eps_elast
+    
+!------------------------------------------------------------------------------------!
 
-!------------------------------------------------------------------------------------
-
-    PURE REAL(kind=AbqRK) FUNCTION HFEDposNoSplit(eps,nHFEDpar,parHFEDMatrixPhase)
+    PURE REAL(kind=AbqRK) FUNCTION HFEDposNoSplit(eps,dTemperature,nHFEDpar,parHFEDMatrixPhase,nThermalpar,parThermalMatrixPhase)
     ! Psi pos no split algorithm
 
       IMPLICIT NONE
-      INTEGER(kind=AbqIK), INTENT(IN) :: nHFEDpar
-      REAL(kind=AbqRK), INTENT(IN) :: parHFEDMatrixPhase(nHFEDpar)
+      
+      INTEGER(kind=AbqIK), INTENT(IN) :: nHFEDpar, nThermalpar
+      REAL(kind=AbqRK), INTENT(IN) :: parHFEDMatrixPhase(nHFEDpar), parThermalMatrixPhase(nThermalpar)
+      REAL(kind=AbqRK), INTENT(IN) :: dTemperature
       REAL(kind=AbqRK), INTENT(IN) :: eps(3,3)
       REAL(kind=AbqRK) :: eps_e_i(3,3), ETensor(3,3,3,3)
       REAL(kind=AbqRK) :: E, nu
@@ -56,7 +78,7 @@ MODULE SplitModulePF
       E               = parHFEDMatrixPhase(1)
       nu              = parHFEDMatrixPhase(2)
       !
-      eps_e_i = eps_e(eps)
+      eps_e_i = eps_elast(eps,dTemperature,nHFEDpar,parHFEDMatrixPhase,nThermalpar,parThermalMatrixPhase)
       !
       ETensor=ElastTensor(E,nu)
       !
@@ -67,12 +89,14 @@ MODULE SplitModulePF
 
 !------------------------------------------------------------------------------------
 
-    PURE REAL(kind=AbqRK) FUNCTION HFEDnegNoSplit(eps,nHFEDpar,parHFEDMatrixPhase)
+    PURE REAL(kind=AbqRK) FUNCTION HFEDnegNoSplit(eps,dTemperature,nHFEDpar,parHFEDMatrixPhase,nThermalpar,parThermalMatrixPhase)
     ! Psi neg no split algorithm
 
       IMPLICIT NONE
-      INTEGER(kind=AbqIK), INTENT(IN) :: nHFEDpar
-      REAL(kind=AbqRK), INTENT(IN) :: parHFEDMatrixPhase(nHFEDpar)
+      
+      INTEGER(kind=AbqIK), INTENT(IN) :: nHFEDpar, nThermalpar
+      REAL(kind=AbqRK), INTENT(IN) :: parHFEDMatrixPhase(nHFEDpar), parThermalMatrixPhase(nThermalpar)
+      REAL(kind=AbqRK), INTENT(IN) :: dTemperature
       REAL(kind=AbqRK), INTENT(IN) :: eps(3,3)
       REAL(kind=AbqRK) :: eps_e_i(3,3), ETensor(3,3,3,3)
       REAL(kind=AbqRK) :: E, nu
@@ -89,12 +113,14 @@ MODULE SplitModulePF
 !
 !------------------------------------------------------------------------------------
 
-    PURE REAL(kind=AbqRK) FUNCTION d_HFEDposNoSplit_d_eps_e(eps,nHFEDpar,parHFEDMatrixPhase)
+    PURE REAL(kind=AbqRK) FUNCTION d_HFEDposNoSplit_d_eps_e(eps,dTemperature,nHFEDpar,parHFEDMatrixPhase,nThermalpar,parThermalMatrixPhase)
     ! Psi pos no split algorithm
 
       IMPLICIT NONE
-      INTEGER(kind=AbqIK), INTENT(IN) :: nHFEDpar
-      REAL(kind=AbqRK), INTENT(IN) :: parHFEDMatrixPhase(nHFEDpar)
+      
+      INTEGER(kind=AbqIK), INTENT(IN) :: nHFEDpar, nThermalpar
+      REAL(kind=AbqRK), INTENT(IN) :: parHFEDMatrixPhase(nHFEDpar), parThermalMatrixPhase(nThermalpar)
+      REAL(kind=AbqRK), INTENT(IN) :: dTemperature
       REAL(kind=AbqRK), INTENT(IN) :: eps(3,3)
       REAL(kind=AbqRK) :: eps_e_i(3,3), ETensor(3,3,3,3)
       REAL(kind=AbqRK) :: E, nu
@@ -103,7 +129,7 @@ MODULE SplitModulePF
       E               = parHFEDMatrixPhase(1)
       nu              = parHFEDMatrixPhase(2)
       !
-      eps_e_i = eps_e(eps)
+      eps_e_i = eps_elast(eps,dTemperature,nHFEDpar,parHFEDMatrixPhase,nThermalpar,parThermalMatrixPhase)
       !
       ETensor=ElastTensor(E,nu)
       !
@@ -114,12 +140,14 @@ MODULE SplitModulePF
 
 !------------------------------------------------------------------------------------
 
-    PURE REAL(kind=AbqRK) FUNCTION d_HFEDnegNoSplit_d_eps_e(eps,nHFEDpar,parHFEDMatrixPhase)
+    PURE REAL(kind=AbqRK) FUNCTION d_HFEDnegNoSplit_d_eps_e(eps,dTemperature,nHFEDpar,parHFEDMatrixPhase,nThermalpar,parThermalMatrixPhase)
     ! Psi neg no split algorithm
 
       IMPLICIT NONE
-      INTEGER(kind=AbqIK), INTENT(IN) :: nHFEDpar
-      REAL(kind=AbqRK), INTENT(IN) :: parHFEDMatrixPhase(nHFEDpar)
+      
+      INTEGER(kind=AbqIK), INTENT(IN) :: nHFEDpar, nThermalpar
+      REAL(kind=AbqRK), INTENT(IN) :: parHFEDMatrixPhase(nHFEDpar), parThermalMatrixPhase(nThermalpar)
+      REAL(kind=AbqRK), INTENT(IN) :: dTemperature
       REAL(kind=AbqRK), INTENT(IN) :: eps(3,3)
       REAL(kind=AbqRK) :: eps_e_i(3,3), ETensor(3,3,3,3)
       REAL(kind=AbqRK) :: E, nu
@@ -137,12 +165,14 @@ MODULE SplitModulePF
 !
 !------------------------------------------------------------------------------------
 
-    PURE REAL(kind=AbqRK) FUNCTION d_HFEDposNoSplit_d_eps_e_d_eps_e(eps,nHFEDpar,parHFEDMatrixPhase)
+    PURE REAL(kind=AbqRK) FUNCTION d_HFEDposNoSplit_d_eps_e_d_eps_e(eps,dTemperature,nHFEDpar,parHFEDMatrixPhase,nThermalpar,parThermalMatrixPhase)
     ! Psi neg no split algorithm
 
       IMPLICIT NONE
-      INTEGER(kind=AbqIK), INTENT(IN) :: nHFEDpar
-      REAL(kind=AbqRK), INTENT(IN) :: parHFEDMatrixPhase(nHFEDpar)
+      
+      INTEGER(kind=AbqIK), INTENT(IN) :: nHFEDpar, nThermalpar
+      REAL(kind=AbqRK), INTENT(IN) :: parHFEDMatrixPhase(nHFEDpar), parThermalMatrixPhase(nThermalpar)
+      REAL(kind=AbqRK), INTENT(IN) :: dTemperature
       REAL(kind=AbqRK), INTENT(IN) :: eps(3,3)
       REAL(kind=AbqRK) :: eps_e_i(3,3), ETensor(3,3,3,3)
       REAL(kind=AbqRK) :: E, nu
@@ -157,12 +187,14 @@ MODULE SplitModulePF
 
 !------------------------------------------------------------------------------------
 
-    PURE REAL(kind=AbqRK) FUNCTION d_HFEDnegNoSplit_d_eps_e_d_eps_e(eps,nHFEDpar,parHFEDMatrixPhase)
+    PURE REAL(kind=AbqRK) FUNCTION d_HFEDnegNoSplit_d_eps_e_d_eps_e(eps,dTemperature,nHFEDpar,parHFEDMatrixPhase,nThermalpar,parThermalMatrixPhase)
     ! Psi neg no split algorithm
 
       IMPLICIT NONE
-      INTEGER(kind=AbqIK), INTENT(IN) :: nHFEDpar
-      REAL(kind=AbqRK), INTENT(IN) :: parHFEDMatrixPhase(nHFEDpar)
+      
+      INTEGER(kind=AbqIK), INTENT(IN) :: nHFEDpar, nThermalpar
+      REAL(kind=AbqRK), INTENT(IN) :: parHFEDMatrixPhase(nHFEDpar), parThermalMatrixPhase(nThermalpar)
+      REAL(kind=AbqRK), INTENT(IN) :: dTemperature
       REAL(kind=AbqRK), INTENT(IN) :: eps(3,3)
       REAL(kind=AbqRK) :: eps_e_i(3,3), ETensor(3,3,3,3)
       REAL(kind=AbqRK) :: E, nu

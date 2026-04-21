@@ -52,11 +52,6 @@
       INTEGER(kind=AbqIK) :: nNodalDOF, nPp, iT, iT_I
       LOGICAL :: isNlgeom, positivDetJ, k_RHS, k_K, k_M, positivDetJTemp
       
-      ! DEBUG HEATFLUX
-      REAL(kind=AbqRK) :: fint_contrib(ndofel)
-
-	
-!~ 	  WRITE(*,*) '-----------------PFUEL called-----------------'
 
       ! initialisation
       positivDetJ=.TRUE.; isNlgeom=.FALSE.; k_RHS=.TRUE.; k_K=.TRUE.; k_M=.FALSE.; positivDetJTemp=.TRUE.
@@ -113,7 +108,6 @@
       ALLOCATE(ddsddt(ntens), drplde(ntens), Matrix_B(ntens,ndofel), Ct(ntens,ntens), stran(ntens), dstran(ntens), stress(ntens))
       ddsddt=zero; drplde=zero; Matrix_B = zero; stran = zero; dstran = zero; Ct = zero; stress = zero
 
-	  
       ! query at time 0: number of internal state variables per integration point and material parameters: answer from UMAT
       IF ( time(2) .EQ. zero ) THEN
         IF (nsvars .LT. NGP*numSDV) THEN
@@ -128,16 +122,7 @@
         ! check of material parameters: answer from UMAT
         CALL CheckMaterialParameters(props)
       END IF
-      
-      
-		if (KINC .eq. 1) then
-		  write(*,*) '=== Element', JELEM
-		  do i1 = 1, NNODE
-			iT = 4*(i1-1) + 4
-			write(*,'(A,I2,A,F12.4)') '  Knoten ', i1, ' T =', U(iT)
-		  end do
-		end if
-      
+
 
       ! thickness of 2D-Elements
       prop_thickness = one
@@ -145,15 +130,6 @@
 
       ! Ende 'Wer bin ich, was kann ich ?'
 
-	  ! DEBUG HEATFLUX
-		IF (jelem .EQ. 1) THEN
-			WRITE(*,'(A,I3)') '=== ELEMENT ', jelem
-			DO i1 = 1, nnode
-				WRITE(*,'(A,I2,A,2F10.4)') '  Knoten ', i1, ' coords: ', &
-					coords(1,i1), coords(2,i1)
-			END DO
-			WRITE(*,*)
-		END IF
 
       ! UMAT call only when neccessary
       IF (k_RHS .OR. k_K) THEN
@@ -167,15 +143,7 @@
 
           CALL BMatrixJacobian(coords(1:D,1:nnode),u,D,nnode,ndofel,NDI,NSHR,ntens,njprop,ShapeFunc(GPPos(npt,1:D)), &
                                ShapeFuncDeriv(GPPos(npt,1:D)),jprops,prop_thickness,isNlgeom,Matrix_B,JacobiDet,drot,GPcoords,positivDetJ)
-
 		  
-		  ! DEBUG HEATFLUX
-			IF (jelem .EQ. 1) THEN
-				WRITE(*,'(A,I2,A,2F10.6)') '  GP ', npt
-				DO i1 = 1, ntens
-					WRITE(*,'(A,I2,A,16F10.6)') '  B(', i1, ',:) = ', (Matrix_B(i1,i2), i2=1,ndofel)
-				END DO
-			END IF
 
           IF (positivDetJ) THEN
           ! element OK
@@ -191,8 +159,7 @@
                       energy_gp(4),energy_gp(3),rpl,ddsddt,drplde,drpldt,stran, &
                       dstran,time,dtime,predef_umat(1),dpred(1),predef_umat,dpred,cmname,NDI,NSHR,ntens, &
                       numSDV,props,nprops,GPcoords,drot,pnewdt,celent,F0,F1,jelem,npt,layer,kspt,kstep,kinc)
-                      
-			
+
 !            ! viscous dissipation = Helmholtz free energy bulk mix (SDV 31)
 !            energy_gp(5) = svars(numSDV*(npt-1)+31)
 !            ! electrostatic energy = gradient part of chemical energy (mix) (SDV 34)
@@ -205,8 +172,8 @@
 !            energy_gp(3) = svars(numSDV*(npt-1)+23)
 !            ! electrostatic energy = sum of order parameters 2 (SDV 21 -- SDV 20+nOp)
 !            energy_gp(7) = SUM(svars(numSDV*(npt-1)+21:numSDV*(npt-1)+20+nOp))
-
-
+			
+			
             ! integration over element
             ! energies
             energy(:) = energy(:) + GPWeight(npt)*JacobiDet * energy_gp(:)
@@ -214,34 +181,14 @@
             amatrx = amatrx + GPWeight(npt)*JacobiDet * matmul(transpose(Matrix_B),matmul(Ct,Matrix_B))
             ! internal force vector
             fint = fint - GPWeight(npt)*JacobiDet * matmul(transpose(Matrix_B),stress)
-
-
-			! DEBUG HEATFLUX
-			
-			fint_contrib = - GPWeight(npt)*JacobiDet * matmul(transpose(Matrix_B),stress)
-!~ 			fint_contrib = zero
-			
-			IF (jelem .EQ. 1) THEN
-				WRITE(*,'(A)') '--- fint gesamt ---'
-				DO i1 = 1, ndofel
-					WRITE(*,'(A,I2,A,E14.6)') '  fint(', i1, ') = ', fint_contrib(i1)
-				END DO
-			END IF
-						
-			! DEBUG HEATFLUX
-			IF (jelem .EQ. 1) THEN
-				WRITE(*,'(A)') '--- fint gesamt ---'
-				DO i1 = 1, ndofel
-					WRITE(*,'(A,I2,A,E14.6)') '  fint(', i1, ') = ', fint(i1)
-				END DO
-			END IF
-
-          ELSE
+		  ELSE
           ! distorted element
             ! stop loop
             EXIT
           END IF
         END DO
+        
+        
 
         ! zero matrices for distorted elements
         IF (.NOT. positivDetJ) THEN
@@ -265,38 +212,6 @@
       ! no rhs required
         rhs(1:ndofel,1) = zero
       END IF
-      
-!~       ! ── Am Ende der UEL, nach der Gauss-Schleife ─────────────────────────────
-
-!~ 		write(*,'(/,A,I3,A,I3)') '=== AMATRX + FINT | Inkrement:', KINC, &
-!~ 								  '  Element:', JELEM
-
-!~ 		! ── Fint / RHS-Vektor (alle 16 Einträge) ─────────────────────────────────
-!~ 		write(*,'(A)') '--- fint (RHS) ---'
-!~ 		do i1 = 1, NDOFEL
-!~ 			write(*,'(A,I3,A,E14.6)') '  fint(', i1, ') = ', RHS(i1,1)
-!~ 		end do
-
-!~ 		! ── Thermischer Subblock von AMATRX: Zeilen/Spalten 4,8,12,16 ────────────
-!~ 		! (T-DOF ist der 4. Slot je Knoten)
-!~ 		write(*,'(A)') '--- AMATRX thermischer Block (T-DOFs: Slots 4,8,12,16) ---'
-!~ 		write(*,'(A)') '         T1          T2          T3          T4'
-!~ 		do i1 = 1, 4
-!~ 			iT_I = 4*i1                          ! Slot 4, 8, 12, 16
-!~ 			write(*,'(A,I1,A,4E12.4)') '  T', i1, ' |', &
-!~ 				AMATRX(iT_I, 4),  &
-!~ 				AMATRX(iT_I, 8),  &
-!~ 				AMATRX(iT_I, 12), &
-!~ 				AMATRX(iT_I, 16)
-!~ 		end do
-
-!~ 		! ── Thermische fint-Einträge isoliert ────────────────────────────────────
-!~ 		write(*,'(A)') '--- fint thermisch (Slots 4,8,12,16) ---'
-!~ 		write(*,'(4(A,E12.4))') &
-!~ 			'  fint_T1=', RHS(4,1),  &
-!~ 			'  fint_T2=', RHS(8,1),  &
-!~ 			'  fint_T3=', RHS(12,1), &
-!~ 			'  fint_T4=', RHS(16,1)
       
 
       DEALLOCATE(Matrix_B, ddsddt, drplde, stran, dstran, Ct, stress)

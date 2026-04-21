@@ -926,6 +926,41 @@ MODULE TensorModule
 
 !------------------------------------------------------------------------------------
 
+    PURE REAL(kind=AbqRK) FUNCTION SymIdent4th()
+    ! symmetric Unit tensor 4th Order
+
+      USE ABQINTERFACE_PF
+      USE FLOATNUMBERS
+
+      IMPLICIT NONE
+
+      DIMENSION SymIdent4th(3,3,3,3)
+      INTEGER(kind=AbqIK) :: i, j, k, l
+
+		! Symmetrischer Einheitstensor 4. Ordnung:
+		! I^sym_ijkl = 1/2 * (delta_ik*delta_jl + delta_il*delta_jk)
+
+		SymIdent4th = 0.0d0
+
+		DO i=1,3
+		  DO j=1,3
+			DO k=1,3
+			  DO l=1,3
+				IF ((i .EQ. k) .AND. (j .EQ. l)) THEN
+				  SymIdent4th(i,j,k,l) = SymIdent4th(i,j,k,l) + 0.5d0
+				END IF
+				IF ((i .EQ. l) .AND. (j .EQ. k)) THEN
+				  SymIdent4th(i,j,k,l) = SymIdent4th(i,j,k,l) + 0.5d0
+				END IF
+			  END DO
+			END DO
+		  END DO
+		END DO
+		
+	END FUNCTION SymIdent4th
+
+!------------------------------------------------------------------------------------
+
     PURE REAL(kind=AbqRK) FUNCTION VolumetricTensor(Q)
     ! volumetric tensor
 
