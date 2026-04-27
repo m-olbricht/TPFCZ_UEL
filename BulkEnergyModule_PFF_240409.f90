@@ -65,6 +65,9 @@ USE AliasModulePF
       !
       therm_exp = parThermalMatrixPhase(5)
       !
+      !
+      d_eps_elast_d_temperature = zero
+      !
       FORALL (i1=1:3)
         d_eps_elast_d_temperature(i1,i1) = -therm_exp
       END FORALL
@@ -162,6 +165,7 @@ USE AliasModulePF
       REAL(kind=AbqRK) :: d_HFEDcomp_d_eps_e(3,3)
       REAL(kind=AbqRK) :: degD
       !
+      !
       DIMENSION d_bulkED_d_eps(3,3)
       !
       d_eps_e_d_eps = d_eps_elast_d_eps()
@@ -170,12 +174,12 @@ USE AliasModulePF
       d_HFEDtens_d_eps_e = d_HFEDpos_d_eps_e(eps,dTemperature,nHFEDpar,parHFEDMatrixPhase,nThermalpar,parThermalMatrixPhase)
       d_HFEDcomp_d_eps_e = d_HFEDneg_d_eps_e(eps,dTemperature,nHFEDpar,parHFEDMatrixPhase,nThermalpar,parThermalMatrixPhase)
       !
-      degD = Degradation(damage,prop_df_betaPF,prop_df_alphaPF)
+	  degD = Degradation(damage, prop_df_betaPF, prop_df_alphaPF)
       !
       d_bulkED_d_eps = degD*DOUBLECONTRACTIONTwoFour(d_HFEDtens_d_eps_e,d_eps_e_d_eps) + DOUBLECONTRACTIONTwoFour(d_HFEDcomp_d_eps_e,d_eps_e_d_eps)
-      
-      
-    END FUNCTION d_bulkED_d_eps
+
+	  
+	END FUNCTION d_bulkED_d_eps
 
 !------------------------------------------------------------------------------------
 
@@ -233,7 +237,6 @@ USE AliasModulePF
       REAL(kind=AbqRK) :: d_HFEDcomp_d_eps_e(3,3)
       REAL(kind=AbqRK) :: degD
       !
-      DIMENSION d_bulkED_d_temperature(3,3)
       !
       !
       d_eps_e_d_temperature = d_eps_elast_d_temperature(eps,dTemperature,nThermalpar,parThermalMatrixPhase)
@@ -337,7 +340,7 @@ USE AliasModulePF
 
 !------------------------------------------------------------------------------------!
 
-    PURE REAL(kind=AbqRK) FUNCTION d_bulkED_d_eps_d_temperature(eps,damage,dTemperature,nThermalpar,parThermalMatrixPhase,nHFEDpar,parHFEDMatrixPhase,prop_df_alphaPF,prop_df_betaPF,H)
+    REAL(kind=AbqRK) FUNCTION d_bulkED_d_eps_d_temperature(eps,damage,dTemperature,nThermalpar,parThermalMatrixPhase,nHFEDpar,parHFEDMatrixPhase,prop_df_alphaPF,prop_df_betaPF,H)
     ! derivative of bulk energy density w.r.t. strain, temperature
 	  
 	  USE TensorModule
@@ -366,7 +369,6 @@ USE AliasModulePF
       !
       DIMENSION d_bulkED_d_eps_d_temperature(3,3)
       !
-      !
       d_eps_e_d_eps = d_eps_elast_d_eps()
       d_eps_e_d_temperature = d_eps_elast_d_temperature(eps,dTemperature,nThermalpar,parThermalMatrixPhase)
       !
@@ -375,8 +377,7 @@ USE AliasModulePF
       !
       degD = Degradation(damage,prop_df_betaPF,prop_df_alphaPF)
       !
-      d_bulkED_d_eps_d_temperature = degD*DOUBLECONTRACTIONTwoTwo(d_HFEDtens_d_eps_e_d_eps_e,d_eps_e_d_temperature) + DOUBLECONTRACTIONTwoTwo(d_HFEDtens_d_eps_e_d_eps_e,d_eps_e_d_temperature)
-      
+      d_bulkED_d_eps_d_temperature = degD*DOUBLECONTRACTIONTwoTwo(d_HFEDtens_d_eps_e_d_eps_e,d_eps_e_d_temperature) + DOUBLECONTRACTIONTwoTwo(d_HFEDcomp_d_eps_e_d_eps_e,d_eps_e_d_temperature)
       
     END FUNCTION d_bulkED_d_eps_d_temperature
 
@@ -472,7 +473,6 @@ USE AliasModulePF
       d_eps_e_d_eps = d_eps_elast_d_eps()
       d_eps_e_d_temperature = d_eps_elast_d_temperature(eps,dTemperature,nThermalpar,parThermalMatrixPhase)
       !
-      !
       d_HFEDtens_d_eps_e_d_eps_e = d_HFEDpos_d_eps_e_d_eps_e(eps,dTemperature,nHFEDpar,parHFEDMatrixPhase,nThermalpar,parThermalMatrixPhase)
       d_HFEDcomp_d_eps_e_d_eps_e = d_HFEDneg_d_eps_e_d_eps_e(eps,dTemperature,nHFEDpar,parHFEDMatrixPhase,nThermalpar,parThermalMatrixPhase)
       !
@@ -484,6 +484,7 @@ USE AliasModulePF
       temp2 = DOUBLECONTRACTIONSTwoFourTwo(d_eps_e_d_temperature,d_HFEDcomp_d_eps_e_d_eps_e,d_eps_e_d_temperature)
       
       d_bulkED_d_temperature_d_temperature = degD*temp1 + temp2
+
       
       
     END FUNCTION d_bulkED_d_temperature_d_temperature

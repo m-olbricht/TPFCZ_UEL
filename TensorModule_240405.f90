@@ -946,12 +946,7 @@ MODULE TensorModule
 		  DO j=1,3
 			DO k=1,3
 			  DO l=1,3
-				IF ((i .EQ. k) .AND. (j .EQ. l)) THEN
-				  SymIdent4th(i,j,k,l) = SymIdent4th(i,j,k,l) + 0.5d0
-				END IF
-				IF ((i .EQ. l) .AND. (j .EQ. k)) THEN
-				  SymIdent4th(i,j,k,l) = SymIdent4th(i,j,k,l) + 0.5d0
-				END IF
+				SymIdent4th(i,j,k,l) = half*(Kronecker(i,k)*Kronecker(j,l) + Kronecker(i,l)*Kronecker(j,k))
 			  END DO
 			END DO
 		  END DO

@@ -251,7 +251,7 @@ MODULE PhaseField_module
 	  temperature     = stran(pos_temperature)
 	  temperature_old = stran(pos_temperature) - dstran(pos_temperature)
 
-	  IF (kstep .EQ. 2 .AND. dtime .GT. zero) THEN
+	  IF (dtime .GT. zero) THEN
 		temperature_rate = (temperature - temperature_old) / dtime
 	  ELSE
 		temperature_rate = zero
@@ -387,7 +387,7 @@ MODULE PhaseField_module
 					 nThermalpar,parThermalMatrix, dtime, &
                      H)
       END IF
-
+	  
 
       ! dummy output
       rpl = zero; ddsddt = zero; drplde = zero; drpldt = zero
@@ -553,6 +553,8 @@ MODULE PhaseField_module
         REAL(kind=AbqRK) :: thermal_cond,density,heat_capacity
         REAL(kind=AbqRK) :: d_BKED_d_eps(3,3)
         REAL(kind=AbqRK) :: temp(3)
+        REAL(kind=AbqRK) :: cont_heattransfer
+        REAL(kind=AbqRK) :: d_BKED_d_temperature
         INTEGER(kind=AbqIK) :: i1, pos_i1
         DIMENSION stresses(ntens)
 
@@ -576,6 +578,7 @@ MODULE PhaseField_module
           stresses(6) = d_BKED_d_eps(2,3)
         END IF
         !
+!~         WRITE(*,*) 'in ARRAY stresses nach d_BulkED_d_eps: d_BKED_d_eps: ', stresses(:)
         ! damage parameters
         !
         DO i1=1,nphase
@@ -597,10 +600,23 @@ MODULE PhaseField_module
 		heat_capacity = parThermalMatrix(3)
 		!
 		! Temperature Contribution
-		! stationaere Waermeleitung
-		stresses(pos_temperature) = 0.
-		
-		stresses(pos_temperature+1:pos_temperature+D) = -thermal_cond*grad_temperature
+		stresses(pos_temperature) = zero
+		!
+		! heat transfer
+		IF (kstep .EQ. 2 .AND. dtime .GT. zero) THEN
+			cont_heattransfer = density * heat_capacity * temperature_rate ! Temperature driving force
+		ELSE 
+			cont_heattransfer = zero
+		END IF
+		! free energy dBulkED/dTemperature
+		d_BKED_d_temperature = d_bulkED_d_temperature(eps,damage(1),dTemperature,nThermalpar,parThermalMatrix,nHFEDpar,parHFEDMatrix,prop_df_a,prop_df_b,H)
+		!
+		stresses(pos_temperature) = cont_heattransfer + d_BKED_d_temperature
+		!
+		stresses(pos_temperature+1:pos_temperature+D) = thermal_cond*grad_temperature ! Temperature Gradient driving force
+
+!~ 		WRITE(*,*) 'ARRAY Stresses in Stresses Function: ', stresses(:)
+
 
       END FUNCTION stresses
 
@@ -634,7 +650,10 @@ MODULE PhaseField_module
         REAL(kind=AbqRK), INTENT(IN) :: H
         REAL(kind=AbqRK), INTENT(IN) :: dtime
         REAL(kind=AbqRK) :: thermal_cond,density,heat_capacity
+        REAL(kind=AbqRK) :: cont_heattransfer_tangent
         REAL(kind=AbqRK) :: d_BKED_d_eps_d_eps(3,3,3,3)
+        REAL(kind=AbqRK) :: d_BKED_d_eps_d_temperature(3,3)
+        REAL(kind=AbqRK) :: d_BKED_d_temperature_d_temperature
         REAL(kind=AbqRK) :: temp1(3), temp2(3,3)
         INTEGER(kind=AbqIK) :: i1, i2, pos_i1, pos_i2
         DIMENSION tangent(ntens,ntens)
@@ -763,21 +782,76 @@ MODULE PhaseField_module
           !
         END DO
         !
-        !
-		! temperature parameters
+		! Temperature
 		!
 		thermal_cond = parThermalMatrix(1)
 		density = parThermalMatrix(2)
 		heat_capacity = parThermalMatrix(3)
 		!
-		! stationaere Waermeleitung
-		tangent(pos_temperature,pos_temperature) = zero
+		! Contribution Heat Transfer
+		IF (kstep .EQ. 2 .AND. dtime .GT. zero) THEN
+			cont_heattransfer_tangent = density*heat_capacity/dtime
+		ELSE
+			cont_heattransfer_tangent = zero
+		END IF
+		!
+		! Contribution Free Energy
+		d_BKED_d_temperature_d_temperature = d_bulkED_d_temperature_d_temperature(eps,damage(1),dTemperature,nThermalpar,parThermalMatrix,nHFEDpar,parHFEDMatrix,prop_df_a,prop_df_b,H)
+		!
+		!
+		! Combined Tangent
+		tangent(pos_temperature,pos_temperature) = cont_heattransfer_tangent + d_BKED_d_temperature_d_temperature
+		!
 		!
 		! grad_temperature-grad_temperature: contributions of ...
 		tangent(pos_temperature+1,pos_temperature+1) = thermal_cond
 		tangent(pos_temperature+2,pos_temperature+2) = thermal_cond
 		tangent(pos_temperature+3,pos_temperature+3) = thermal_cond
-        
+		!
+		!
+        ! eps-temperature: contributions of eps-temperature
+        !
+        d_BKED_d_eps_d_temperature = d_bulkED_d_eps_d_temperature(eps,damage(1),dTemperature,nThermalpar,parThermalMatrix,nHFEDpar,parHFEDMatrix,prop_df_a,prop_df_b,H)
+!~         WRITE(*,*) 'd_BKED_d_eps_d_temperature: ', d_BKED_d_eps_d_temperature(:,:)
+        !
+        tangent(pos_temperature,1) = d_BKED_d_eps_d_temperature(1,1)
+        tangent(pos_temperature,2) = d_BKED_d_eps_d_temperature(2,2)
+        tangent(pos_temperature,3) = d_BKED_d_eps_d_temperature(3,3)
+        IF (D .GE. 2) THEN
+          tangent(pos_temperature,4) = d_BKED_d_eps_d_temperature(1,2)
+        END IF
+        IF (D .EQ. 2) THEN
+!~           tangent(1:4,pos_temperature) = tangent(pos_temperature,1:4)
+        ELSE IF (D .EQ. 3) THEN
+          tangent(pos_i1,5) = zero ! dummy
+          tangent(pos_i1,6) = zero ! dummy
+          tangent(1:6,pos_temperature) = tangent(pos_temperature,1:6)
+        END IF
+        !
+        IF (jelem .EQ. 1 .AND. npt .EQ. 1) THEN
+			WRITE(*,*) 'Tangente: ', tangent(:,:)
+		END IF
+        !
+        ! eps-grad_temperature: contributions of ...
+        temp1(:) = zero ! dummy
+        tangent(pos_temperature+1:pos_temperature+D,1) = temp1(1:D)
+        temp1(:) = zero ! dummy
+        tangent(pos_temperature+1:pos_temperature+D,2) = temp1(1:D)
+        temp1(:) = zero ! dummy
+        tangent(pos_temperature+1:pos_temperature+D,3) = temp1(1:D)
+        IF (D .GE. 2) THEN
+          temp1(:) = zero ! dummy
+          tangent(pos_temperature+1:pos_temperature+D,4) = temp1(1:D)
+        END IF
+        IF (D .EQ. 2) THEN
+          tangent(1:4,pos_temperature+1:pos_temperature+D) = TRANSPOSE(tangent(pos_temperature+1:pos_temperature+D,1:4))
+        ELSE IF (D .EQ. 3) THEN
+          temp1(:) = zero ! dummy
+          tangent(pos_temperature+1:pos_temperature+D,5) = temp1(1:D)
+          temp1(:) = zero ! dummy
+          tangent(pos_temperature+1:pos_temperature+D,6) = temp1(1:D)
+          tangent(1:6,pos_temperature+1:pos_temperature+D) = TRANSPOSE(tangent(pos_temperature+1:pos_temperature+D,1:6))
+        END IF
         
       END FUNCTION tangent
 
