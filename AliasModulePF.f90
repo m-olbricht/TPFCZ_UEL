@@ -7,9 +7,13 @@ MODULE AliasModulePF
    ! ==========================================================
    ! Viscous Dissipation PF
    ! ==========================================================
-!~       USE ViscousDissipationModule, ONLY: VDED => VDED_Liu, &
-!~                                                d_VDED_d_phase => d_VDED_Liu_d_phase, &
-!~                                                d_d_VDED_d_phase_d_phase => d_d_VDED_Liu_d_phase_d_phase
+!~    USE ViscousDissipationModule, ONLY: VDED => VDED_GL, &
+!~                                                d_VDED_d_damage => d_VDED_GL_d_phase, &
+!~                                                d_VDED_d_damage_d_damage => d_VDED_GL_d_phase_d_phase
+
+   USE ViscousDissipationModule, ONLY: VDED => VDED_mod, &
+                                               d_VDED_d_damage => d_VDED_mod_d_phase, &
+                                               d_VDED_d_damage_d_damage => d_VDED_mod_d_phase_d_phase
 
    ! ==========================================================
    ! Interface Energy (AT2 aktiv)
@@ -31,9 +35,13 @@ MODULE AliasModulePF
    ! Degradation Function
    ! ==========================================================
 
-		USE DegradationModule, ONLY: Degradation => DegradationFlex, &
-                                              d_Degradation_d_damage => d_DegradationFlex_d_damage, &
-                                              d_Degradation_d_damage_d_damage => d_DegradationFlex_d_damage_d_damage 
+!~ 		USE DegradationModule, ONLY: Degradation => DegradationFlex, &
+!~                                               d_Degradation_d_damage => d_DegradationFlex_d_damage, &
+!~                                               d_Degradation_d_damage_d_damage => d_DegradationFlex_d_damage_d_damage 
+                                              
+		USE DegradationModule, ONLY: Degradation => DegradationQuadratic, &
+                                              d_Degradation_d_damage => d_DegradationQuadratic_d_damage, &
+                                              d_Degradation_d_damage_d_damage => d_DegradationQuadratic_d_damage_d_damage 
                                                
    ! ==========================================================
    ! Energy Split
@@ -53,7 +61,7 @@ MODULE AliasModulePF
         
    IMPLICIT NONE
    
-!~    PUBLIC :: VDED, d_VDED_d_phase, d_d_VDED_d_phase_d_phase
+   PUBLIC :: VDED, d_VDED_d_damage, d_VDED_d_damage_d_damage
    PUBLIC :: IED, d_IED_d_damage, d_IED_d_damage_d_damage
    PUBLIC :: Degradation, d_Degradation_d_damage, d_Degradation_d_damage_d_damage
    PUBLIC :: HFEDpos, d_HFEDpos_d_eps_e, d_HFEDpos_d_eps_e_d_eps_e, HFEDneg, d_HFEDneg_d_eps_e, d_HFEDneg_d_eps_e_d_eps_e

@@ -74,7 +74,7 @@
 !		props_mat (15) : Temperature Reference
 !		props_mat (16) : thermal expansion coefficient
 !		props_mat (17) : *stationary/instationary heat conductance
-!		props_mat (18) : -
+!		props_mat (18) : eta
 !		props_mat (19) : -
 !		props_mat (20) : -
 !
@@ -134,6 +134,8 @@ MODULE PhaseField_module
       USE FreeEnergyModule
       USE AliasModulePF
       USE BulkEnergyModule, ONLY: HFEDtens_H
+      
+      USE SharedValues
 
       IMPLICIT NONE
 
@@ -152,23 +154,22 @@ MODULE PhaseField_module
 
       ! further variables
       INTEGER(kind=AbqIK) :: D, nphase, i1, i2
-      INTEGER(kind=AbqIK) :: nThermalpar
-      INTEGER(kind=AbqIK) :: nHFEDpar, nIEDpar
-      INTEGER(kind=AbqIK) :: first_Thermal_par_index
-      INTEGER(kind=AbqIK) :: first_HFED_par_index, first_IED_par_index
+      INTEGER(kind=AbqIK) :: nHFEDpar, nIEDpar, nVDEDpar, nThermalpar
+      INTEGER(kind=AbqIK) :: first_HFED_par_index, first_IED_par_index, first_VDED_par_index, first_Thermal_par_index
       REAL(kind=AbqRK) :: eps(3,3)
       REAL(kind=AbqRK) :: delta, stran_per(ntens), stress_per(ntens), Ct_temp(ntens,ntens), totalPotential, per, stress_num(ntens)
       REAL(kind=AbqRK) :: prop_df_a, prop_df_b
       REAL(kind=AbqRK) :: ElasticEnergytens, H, Hn
       INTEGER(kind=AbqIK), ALLOCATABLE :: pos_p(:)
+      REAL(kind=AbqRK) :: damage_old, damage_rate
+      
       INTEGER(kind=AbqIK) :: pos_temperature
       REAL(kind=AbqRK) :: temperature, temperature_old, temperature_rate
       REAL(kind=AbqRK) :: dtemperature, temperature_reference
       
       REAL(kind=AbqRK), ALLOCATABLE :: damage(:), grad_damage(:,:)
       REAL(kind=AbqRK), ALLOCATABLE :: grad_temperature(:)
-      REAL(kind=AbqRK), ALLOCATABLE :: parThermalMatrix(:)
-      REAL(kind=AbqRK), ALLOCATABLE :: parHFEDMatrix(:), parIEDMatrix(:)
+      REAL(kind=AbqRK), ALLOCATABLE :: parHFEDMatrix(:), parIEDMatrix(:), parVDEDMatrix(:), parThermalMatrix(:)
       LOGICAL :: numericalTangent, isSpherisymmetric, isNaN
       
       LOGICAL :: instationaryHC
@@ -193,6 +194,12 @@ MODULE PhaseField_module
         ! 3D
         D = 3
       END SELECT
+      
+	  ! global Variable to print selectively
+      Incrementnumber = kinc
+      Elementnumber = jelem
+      Integrationpointnumber = npt
+      
 
 	  ! ==================
 	  ! Numerical Switches
@@ -214,6 +221,9 @@ MODULE PhaseField_module
       ! number of parameters in interface energy
       nIEDpar = 2
       !
+      ! number of parameters in viscous energy
+      nVDEDpar = 1
+      !
       ! number of parameters for thermal Terms
       nThermalpar = 5
       !
@@ -221,6 +231,7 @@ MODULE PhaseField_module
 	  ALLOCATE(pos_p(nphase), damage(nphase), grad_damage(nphase,3))
 	  ALLOCATE(grad_temperature(3))
 	  ALLOCATE(parHFEDMatrix(nHFEDpar), parIEDMatrix(nIEDpar))
+	  ALLOCATE(parVDEDMatrix(nVDEDpar))
 	  ALLOCATE(parThermalMatrix(nThermalpar))
 	  !	
 	  !
@@ -245,6 +256,7 @@ MODULE PhaseField_module
       eps = strainCoordinates(D,ntens,stran,isSpherisymmetric)
       ! order parameter -- damage variable
       damage = damageParameter(nphase,pos_p,ntens,stran)
+      damage_old = stran(pos_p(1)) - dstran(pos_p(1))
       ! gradient of order parameter = gradient of damage variable
       grad_damage(:,:) = gradientOfPhaseParameter(nphase,D,pos_p,ntens,stran)
       ! temperature
@@ -253,8 +265,10 @@ MODULE PhaseField_module
 
 	  IF (dtime .GT. zero) THEN
 		temperature_rate = (temperature - temperature_old) / dtime
+		damage_rate = (damage(1) - damage_old) / dtime
 	  ELSE
 		temperature_rate = zero
+		damage_rate = zero
 	  END IF
 	  
 	  ! gradient of temperature
@@ -272,7 +286,11 @@ MODULE PhaseField_module
       ! interface energy density -- see InterfaceEnergyModule.f90
       first_IED_par_index = 8
       parIEDMatrix = props_mat(first_IED_par_index:first_IED_par_index+nIEDpar-1)
-	  !
+      !
+      ! Viscous Dissipation
+      first_VDED_par_index = 18
+      parVDEDMatrix = props_mat(first_VDED_par_index:first_VDED_par_index+nVDEDpar-1)
+      !
 	  ! Thermal Conductance Parameters
 	  first_Thermal_par_index = 12
 	  parThermalMatrix = props_mat(first_Thermal_par_index:first_Thermal_par_index+nThermalpar-1)
@@ -283,9 +301,13 @@ MODULE PhaseField_module
 	  prop_df_b = props_mat(11)
 
 	  ! History Update
+	  H = zero
       Hn = svr(14)
-      H = zero
       
+      ! delta temperature
+	  temperature_reference = parThermalMatrix(4)
+	  dTemperature = temperature - temperature_reference
+
       ElasticEnergytens = HFEDtens_H(eps,damage(1),dTemperature,nThermalpar,parThermalMatrix,nHFEDpar,parHFEDMatrix,prop_df_a,prop_df_b,H)
       
 	  IF (ElasticEnergytens .GT. Hn) THEN
@@ -295,27 +317,21 @@ MODULE PhaseField_module
       END IF 
       
       svr(14) = H
-      
-      
-      ! delta temperature
-	  temperature_reference = parThermalMatrix(4)
-	  dTemperature = temperature - temperature_reference
-
 	  
       ! compute all first derivatives
 
       ! generalised stresses
-      stress = stresses(D,ntens,nphase,pos_p,eps,damage,grad_damage, &
+      stress = stresses(D,ntens,nphase,pos_p,eps,damage,grad_damage,damage_rate, &
 						pos_temperature,temperature,dtemperature,grad_temperature, &
 						temperature_rate,nHFEDpar,parHFEDMatrix, &
-						nIEDpar,parIEDMatrix,prop_df_a, prop_df_b, &
+						nIEDpar,parIEDMatrix,nVDEDpar,parVDEDMatrix,prop_df_a, prop_df_b, &
 						nThermalpar,parThermalMatrix, &
 						H)
-
+						
       ! energetic quantities
 
       ! total potential
-      totalPotential = potential(D,nphase,eps,damage,grad_damage,temperature,dtemperature,nHFEDpar,parHFEDMatrix,nIEDpar,parIEDMatrix,nThermalpar, parThermalMatrix, prop_df_a, prop_df_b, H)
+      totalPotential = potential(D,nphase,eps,damage,grad_damage,damage_rate,temperature,dtemperature,nHFEDpar,parHFEDMatrix,nIEDpar,parIEDMatrix,nVDEDpar,parVDEDMatrix,nThermalpar, parThermalMatrix, prop_df_a, prop_df_b, H)
 
       ! Helmholtz free energy density of damage mix and Helmholtz energy density of interface
       energy_elast = HFED_Mix(eps,nHFEDpar,parHFEDMatrix)
@@ -366,10 +382,10 @@ MODULE PhaseField_module
           grad_damage(:,:) = gradientOfPhaseParameter(nphase,D,pos_p,ntens,stran_per)
           !
           ! generalised stresses
-          stress_per = stresses(D,ntens,nphase,pos_p,eps,damage,grad_damage, &
+          stress_per = stresses(D,ntens,nphase,pos_p,eps,damage,grad_damage,damage_rate, &
 								pos_temperature,temperature,dtemperature,grad_temperature, &
 								temperature_rate, nHFEDpar,parHFEDMatrix, &
-								nIEDpar,parIEDMatrix,prop_df_a, prop_df_b, &
+								nIEDpar,parIEDMatrix,nVDEDpar,parVDEDMatrix,prop_df_a, prop_df_b, &
 								nThermalpar,parThermalMatrix, &
 								H)
           ! tangent
@@ -380,15 +396,33 @@ MODULE PhaseField_module
 
       ELSE
         ! analytical material tangent
-        Ct = tangent(D,ntens,nphase,pos_p,eps,damage,grad_damage, &
+        Ct = tangent(D,ntens,nphase,pos_p,eps,damage,grad_damage,damage_rate, &
 					 pos_temperature,temperature,dtemperature,grad_temperature, &
                      temperature_rate, nHFEDpar,parHFEDMatrix,nIEDpar, &
-                     parIEDMatrix,prop_df_a, prop_df_b, &
+                     parIEDMatrix,nVDEDpar,parVDEDMatrix,prop_df_a, prop_df_b, &
 					 nThermalpar,parThermalMatrix, dtime, &
                      H)
       END IF
-	  
+      
+!~       if (jelem == 1 .and. kinc == 1) then
+!~ 		WRITE(*,*) ''
+!~ 		WRITE(*,*) 'Gausspunkt: ', npt
+!~ 		WRITE(*,*) ''
+!~ 		! Übersichtliche Ausgabe von stress (Vektor der Länge ntens)
+!~ 		WRITE(*,'(A)') 'stress:'
+!~ 		DO i1 = 1, ntens
+!~ 			WRITE(*,'(2X,I3,2X,ES14.6)') i1, stress(i1)
+!~ 		END DO
 
+!~ 		! Übersichtliche Ausgabe von Ct (Matrix ntens x ntens)
+!~ 		WRITE(*,'(A)') 'Ct:'
+!~ 		DO i1 = 1, ntens
+!~ 			WRITE(*,'(100(ES14.6,1X))') (Ct(i1,i2), i2 = 1, ntens)
+!~ 		END DO
+!~ 		WRITE(*,*) ''
+!~ 	  end if
+      
+      
       ! dummy output
       rpl = zero; ddsddt = zero; drplde = zero; drpldt = zero
 
@@ -401,8 +435,8 @@ MODULE PhaseField_module
 
 !------------------------------------------------------------------------------------
 
-      PURE REAL(kind=AbqRK) FUNCTION potential(D,nphase,eps,damage,grad_damage,temperature,dtemperature,nHFEDpar,parHFEDMatrix,nIEDpar,parIEDMatrix, &
-												nThermalpar, parThermalMatrix, prop_df_a, prop_df_b, H)
+      PURE REAL(kind=AbqRK) FUNCTION potential(D,nphase,eps,damage,grad_damage,damage_rate,temperature,dtemperature,nHFEDpar,parHFEDMatrix,nIEDpar,parIEDMatrix, &
+												nVDEDpar,parVDEDMatrix, nThermalpar, parThermalMatrix, prop_df_a, prop_df_b, H)
       ! computes total potential
 
         USE ABQINTERFACE_PF
@@ -412,17 +446,18 @@ MODULE PhaseField_module
         USE BulkEnergyModule
 
         IMPLICIT NONE
-        INTEGER(kind=AbqIK), INTENT(IN) :: D, nphase, nHFEDpar, nIEDpar, nThermalpar
-        REAL(kind=AbqRK), INTENT(IN) :: eps(3,3), damage(nphase), grad_damage(nphase,3), temperature, dtemperature
-        REAL(kind=AbqRK), INTENT(IN) :: parHFEDMatrix(nHFEDpar), parIEDMatrix(nIEDpar), parThermalMatrix(nThermalpar)
+        INTEGER(kind=AbqIK), INTENT(IN) :: D, nphase, nHFEDpar, nIEDpar, nVDEDpar, nThermalpar
+        REAL(kind=AbqRK), INTENT(IN) :: eps(3,3), damage(nphase), grad_damage(nphase,3), damage_rate, temperature, dtemperature
+        REAL(kind=AbqRK), INTENT(IN) :: parHFEDMatrix(nHFEDpar), parIEDMatrix(nIEDpar), parVDEDMatrix(nVDEDpar), parThermalMatrix(nThermalpar)
         REAL(kind=AbqRK), INTENT(IN) :: prop_df_a
         REAL(kind=AbqRK), INTENT(IN) :: prop_df_b
         REAL(kind=AbqRK), INTENT(IN) :: H
         INTEGER(kind=AbqIK) :: i1
-
+		!
 		!
         potential = bulkED(eps,damage(1),dTemperature,nThermalpar,parThermalMatrix,nHFEDpar,parHFEDMatrix,prop_df_a,prop_df_b,H) &
-				  + IED(D,damage(1),grad_damage(1,1:D),nIEDpar,parIEDMatrix)
+				  + IED(D,damage(1),grad_damage(1,1:D),nIEDpar,parIEDMatrix) &
+				  + VDED(damage_rate,dtime,nVDEDpar,parVDEDMatrix)
 
       END FUNCTION potential
 
@@ -477,6 +512,7 @@ MODULE PhaseField_module
         damageParameter = zero
         FORALL (i1=1:nphase)
           damageParameter(i1) = s(pos_p(i1))
+          damageParameter(i1) = MAX(0.d0, MIN(1.d0, damageParameter(i1)))
         END FORALL
 
       END FUNCTION damageParameter
@@ -524,11 +560,11 @@ MODULE PhaseField_module
 
 !------------------------------------------------------------------------------------
 
-      PURE REAL(kind=AbqRK) FUNCTION stresses(D,ntens,nphase, & 
-                                              pos_p,eps,damage,grad_damage, &
+      REAL(kind=AbqRK) FUNCTION stresses(D,ntens,nphase, & 
+                                              pos_p,eps,damage,grad_damage,damage_rate, &
                                               pos_temperature,temperature,dtemperature,grad_temperature, &
                                               temperature_rate,nHFEDpar,parHFEDMatrix,nIEDpar, &
-                                              parIEDMatrix,prop_df_a, prop_df_b, &
+                                              parIEDMatrix,nVDEDpar,parVDEDMatrix,prop_df_a, prop_df_b, &
 											  nThermalpar,parThermalMatrix, &
                                               H)
 
@@ -539,18 +575,21 @@ MODULE PhaseField_module
         USE FreeEnergyModule
         USE AliasModulePF
         USE BulkEnergyModule
+        
+        USE SharedValues
 
         IMPLICIT NONE
         INTEGER(kind=AbqIK), INTENT(IN) :: D, ntens, nphase, pos_p(nphase), pos_temperature
         INTEGER(kind=AbqIK), INTENT(IN) :: nThermalpar
-        INTEGER(kind=AbqIK), INTENT(IN) :: nHFEDpar, nIEDpar
-        REAL(kind=AbqRK), INTENT(IN) :: eps(3,3), damage(nphase), grad_damage(nphase,3)
+        INTEGER(kind=AbqIK), INTENT(IN) :: nHFEDpar, nIEDpar, nVDEDpar
+        REAL(kind=AbqRK), INTENT(IN) :: eps(3,3), damage(nphase), grad_damage(nphase,3), damage_rate
         REAL(kind=AbqRK), INTENT(IN) :: temperature, grad_temperature(3), temperature_rate, dtemperature
         REAL(kind=AbqRK), INTENT(IN) :: parThermalMatrix(nThermalpar)
-        REAL(kind=AbqRK), INTENT(IN) :: parHFEDMatrix(nHFEDpar), parIEDMatrix(nIEDpar) 
+        REAL(kind=AbqRK), INTENT(IN) :: parHFEDMatrix(nHFEDpar), parIEDMatrix(nIEDpar), parVDEDMatrix(nVDEDpar)
         REAL(kind=AbqRK), INTENT(IN) :: prop_df_a, prop_df_b
         REAL(kind=AbqRK), INTENT(IN) :: H
         REAL(kind=AbqRK) :: thermal_cond,density,heat_capacity
+        REAL(kind=AbqRK) :: degD
         REAL(kind=AbqRK) :: d_BKED_d_eps(3,3)
         REAL(kind=AbqRK) :: temp(3)
         REAL(kind=AbqRK) :: cont_heattransfer
@@ -585,7 +624,8 @@ MODULE PhaseField_module
           pos_i1 = pos_p(i1)
           ! damage: contributions of interface energy
           stresses(pos_i1) = d_bulkED_d_damage_H(eps,damage(1),dTemperature,nThermalpar,parThermalMatrix,nHFEDpar,parHFEDMatrix,prop_df_a,prop_df_b,H) &
-						   + d_IED_d_damage(D,damage(i1),grad_damage(i1,1:D),nIEDpar,parIEDMatrix)
+						   + d_IED_d_damage(D,damage(i1),grad_damage(i1,1:D),nIEDpar,parIEDMatrix) &
+						   + d_VDED_d_damage(damage_rate,dtime,nVDEDpar,parVDEDMatrix)
           !
           ! grad_damage: contributions of interface energy
           temp = zero
@@ -608,25 +648,29 @@ MODULE PhaseField_module
 		ELSE 
 			cont_heattransfer = zero
 		END IF
+		!
 		! free energy dBulkED/dTemperature
 		d_BKED_d_temperature = d_bulkED_d_temperature(eps,damage(1),dTemperature,nThermalpar,parThermalMatrix,nHFEDpar,parHFEDMatrix,prop_df_a,prop_df_b,H)
+		degD = Degradation(damage(1),prop_df_b, prop_df_a)
+		!
 		!
 		stresses(pos_temperature) = cont_heattransfer + d_BKED_d_temperature
 		!
-		stresses(pos_temperature+1:pos_temperature+D) = thermal_cond*grad_temperature ! Temperature Gradient driving force
-
+		stresses(pos_temperature+1:pos_temperature+D) = degD*thermal_cond*grad_temperature ! Temperature Gradient driving force
+!~ 		!
 !~ 		WRITE(*,*) 'ARRAY Stresses in Stresses Function: ', stresses(:)
+		! 
 
 
       END FUNCTION stresses
 
 !------------------------------------------------------------------------------------
 
-      REAL(kind=AbqRK) FUNCTION tangent(D,ntens,nphase, & 
-                                             pos_p,eps,damage,grad_damage, &
+      PURE REAL(kind=AbqRK) FUNCTION tangent(D,ntens,nphase, & 
+                                             pos_p,eps,damage,grad_damage,damage_rate, &
                                              pos_temperature,temperature,dtemperature,grad_temperature, &
                                              temperature_rate, nHFEDpar,parHFEDMatrix,nIEDpar, &
-                                             parIEDMatrix,prop_df_a, prop_df_b, &
+                                             parIEDMatrix,nVDEDpar,parVDEDMatrix,prop_df_a, prop_df_b, &
 											 nThermalpar,parThermalMatrix, dtime, &
                                              H)
 
@@ -637,20 +681,24 @@ MODULE PhaseField_module
         USE FreeEnergyModule
         USE AliasModulePF
         USE BulkEnergyModule
+		
+		USE SharedValues
+
 
         IMPLICIT NONE
         INTEGER(kind=AbqIK), INTENT(IN) :: D, ntens, nphase, pos_p(nphase), pos_temperature
         INTEGER(kind=AbqIK), INTENT(IN) :: nThermalpar
-        INTEGER(kind=AbqIK), INTENT(IN) :: nHFEDpar, nIEDpar
-        REAL(kind=AbqRK), INTENT(IN) :: eps(3,3), damage(nphase), grad_damage(nphase,3)
+        INTEGER(kind=AbqIK), INTENT(IN) :: nHFEDpar, nIEDpar, nVDEDpar
+        REAL(kind=AbqRK), INTENT(IN) :: eps(3,3), damage(nphase), grad_damage(nphase,3), damage_rate
         REAL(kind=AbqRK), INTENT(IN) :: temperature, grad_temperature(3), temperature_rate, dTemperature
         REAL(kind=AbqRK), INTENT(IN) :: parThermalMatrix(nThermalpar)
-        REAL(kind=AbqRK), INTENT(IN) :: parHFEDMatrix(nHFEDpar), parIEDMatrix(nIEDpar) 
+        REAL(kind=AbqRK), INTENT(IN) :: parHFEDMatrix(nHFEDpar), parIEDMatrix(nIEDpar), parVDEDMatrix(nVDEDpar)
         REAL(kind=AbqRK), INTENT(IN) :: prop_df_a, prop_df_b
         REAL(kind=AbqRK), INTENT(IN) :: H
         REAL(kind=AbqRK), INTENT(IN) :: dtime
         REAL(kind=AbqRK) :: thermal_cond,density,heat_capacity
         REAL(kind=AbqRK) :: cont_heattransfer_tangent
+        REAL(kind=AbqRK) :: degD, d_degD_d_damage
         REAL(kind=AbqRK) :: d_BKED_d_eps_d_eps(3,3,3,3)
         REAL(kind=AbqRK) :: d_BKED_d_eps_d_temperature(3,3)
         REAL(kind=AbqRK) :: d_BKED_d_temperature_d_temperature
@@ -707,9 +755,11 @@ MODULE PhaseField_module
           tangent(6,5) = d_BKED_d_eps_d_eps(2,3,1,3)
           tangent(6,6) = d_BKED_d_eps_d_eps(2,3,2,3)
         END IF
+        !===============================================================
         !
         ! damage parameters
         !
+        !===============================================================
         DO i1=1,nphase
           pos_i1 = pos_p(i1)
           !
@@ -753,12 +803,14 @@ MODULE PhaseField_module
             pos_i2 = pos_p(i2)
             !
             ! damage-damage: contributions of interface energy
+            !
             tangent(pos_i1,pos_i2) = zero ! dummy
             IF (pos_i1 .EQ. pos_i2) THEN 
               tangent(pos_i1,pos_i1) = zero ! dummy
               IF (i1 .EQ. 1) THEN 
                 tangent(pos_i1,pos_i1) = d_bulkED_d_damage_d_damage_H(eps,damage(1),dTemperature,nThermalpar,parThermalMatrix,nHFEDpar,parHFEDMatrix,prop_df_a,prop_df_b,H) &
-									   + d_IED_d_damage_d_damage(D,damage(1),grad_damage(1,1:D),nIEDpar,parIEDMatrix)
+									   + d_IED_d_damage_d_damage(D,damage(1),grad_damage(1,1:D),nIEDpar,parIEDMatrix) &
+									   + d_VDED_d_damage_d_damage(damage_rate,dtime,nVDEDpar,parVDEDMatrix)
               END IF
             END IF
             tangent(pos_i2,pos_i1) = tangent(pos_i1,pos_i2)
@@ -769,7 +821,7 @@ MODULE PhaseField_module
             tangent(pos_i2+1:pos_i2+D,pos_i1) = tangent(pos_i1,pos_i2+1:pos_i2+D)
             !
             ! grad_damage-grad_damage: contributions of interface energy
-            temp2(:,:) = zero ! dummy
+!~             temp2(:,:) = zero ! dummy
             IF (pos_i1 .EQ. pos_i2) THEN
               IF (i1 .EQ. 1) THEN
                 temp2(1:D,1:D) = d_IED_d_grad_damage_d_grad_damage(D,damage(1),grad_damage(1,1:D),nIEDpar,parIEDMatrix)
@@ -781,8 +833,14 @@ MODULE PhaseField_module
           END DO
           !
         END DO
+        !===============================================================
         !
 		! Temperature
+		!
+		!===============================================================
+		degD = Degradation(damage(1),prop_df_b, prop_df_a)
+		d_degD_d_damage = d_Degradation_d_damage(damage(1),prop_df_b, prop_df_a)
+		!
 		!
 		thermal_cond = parThermalMatrix(1)
 		density = parThermalMatrix(2)
@@ -804,33 +862,38 @@ MODULE PhaseField_module
 		!
 		!
 		! grad_temperature-grad_temperature: contributions of ...
-		tangent(pos_temperature+1,pos_temperature+1) = thermal_cond
-		tangent(pos_temperature+2,pos_temperature+2) = thermal_cond
-		tangent(pos_temperature+3,pos_temperature+3) = thermal_cond
+		tangent(pos_temperature+1,pos_temperature+1) = degD * thermal_cond
+		tangent(pos_temperature+2,pos_temperature+2) = degD * thermal_cond
+		tangent(pos_temperature+3,pos_temperature+3) = degD * thermal_cond
 		!
+        !!!!
+        !
+		! Coupling eps-temp, eps-gradtemp
+		!
+		!!!!
 		!
         ! eps-temperature: contributions of eps-temperature
         !
         d_BKED_d_eps_d_temperature = d_bulkED_d_eps_d_temperature(eps,damage(1),dTemperature,nThermalpar,parThermalMatrix,nHFEDpar,parHFEDMatrix,prop_df_a,prop_df_b,H)
 !~         WRITE(*,*) 'd_BKED_d_eps_d_temperature: ', d_BKED_d_eps_d_temperature(:,:)
         !
-        tangent(pos_temperature,1) = d_BKED_d_eps_d_temperature(1,1)
-        tangent(pos_temperature,2) = d_BKED_d_eps_d_temperature(2,2)
-        tangent(pos_temperature,3) = d_BKED_d_eps_d_temperature(3,3)
+        tangent(1,pos_temperature) = d_BKED_d_eps_d_temperature(1,1)
+        tangent(2,pos_temperature) = d_BKED_d_eps_d_temperature(2,2)
+        tangent(3,pos_temperature) = d_BKED_d_eps_d_temperature(3,3)
         IF (D .GE. 2) THEN
-          tangent(pos_temperature,4) = d_BKED_d_eps_d_temperature(1,2)
+          tangent(4,pos_temperature) = d_BKED_d_eps_d_temperature(1,2)
         END IF
         IF (D .EQ. 2) THEN
-!~           tangent(1:4,pos_temperature) = tangent(pos_temperature,1:4)
+!~           tangent(pos_temperature,1:4) = tangent(1:4,pos_temperature)
         ELSE IF (D .EQ. 3) THEN
-          tangent(pos_i1,5) = zero ! dummy
-          tangent(pos_i1,6) = zero ! dummy
-          tangent(1:6,pos_temperature) = tangent(pos_temperature,1:6)
+          tangent(5,pos_i1) = zero ! dummy
+          tangent(6,pos_i1) = zero ! dummy
+          tangent(pos_temperature,1:6) = tangent(1:6,pos_temperature)
         END IF
         !
-        IF (jelem .EQ. 1 .AND. npt .EQ. 1) THEN
-			WRITE(*,*) 'Tangente: ', tangent(:,:)
-		END IF
+!~         IF (Elementnumber .EQ. 1 .AND. Integrationpointnumber .EQ. 1) THEN
+!~ 			WRITE(*,*) 'Tangente: ', tangent(:,:)
+!~ 		END IF
         !
         ! eps-grad_temperature: contributions of ...
         temp1(:) = zero ! dummy

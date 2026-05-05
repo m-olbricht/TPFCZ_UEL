@@ -340,7 +340,7 @@ USE AliasModulePF
 
 !------------------------------------------------------------------------------------!
 
-    REAL(kind=AbqRK) FUNCTION d_bulkED_d_eps_d_temperature(eps,damage,dTemperature,nThermalpar,parThermalMatrixPhase,nHFEDpar,parHFEDMatrixPhase,prop_df_alphaPF,prop_df_betaPF,H)
+    PURE REAL(kind=AbqRK) FUNCTION d_bulkED_d_eps_d_temperature(eps,damage,dTemperature,nThermalpar,parThermalMatrixPhase,nHFEDpar,parHFEDMatrixPhase,prop_df_alphaPF,prop_df_betaPF,H)
     ! derivative of bulk energy density w.r.t. strain, temperature
 	  
 	  USE TensorModule
@@ -377,7 +377,8 @@ USE AliasModulePF
       !
       degD = Degradation(damage,prop_df_betaPF,prop_df_alphaPF)
       !
-      d_bulkED_d_eps_d_temperature = degD*DOUBLECONTRACTIONTwoTwo(d_HFEDtens_d_eps_e_d_eps_e,d_eps_e_d_temperature) + DOUBLECONTRACTIONTwoTwo(d_HFEDcomp_d_eps_e_d_eps_e,d_eps_e_d_temperature)
+      d_bulkED_d_eps_d_temperature = degD*DOUBLECONTRACTIONFourTwo(d_HFEDtens_d_eps_e_d_eps_e,d_eps_e_d_temperature) + DOUBLECONTRACTIONFourTwo(d_HFEDcomp_d_eps_e_d_eps_e,d_eps_e_d_temperature)
+
       
     END FUNCTION d_bulkED_d_eps_d_temperature
 

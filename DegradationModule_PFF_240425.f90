@@ -72,29 +72,33 @@ MODULE DegradationModule
 
 !------------------------------------------------------------------------------------
 
-    PURE REAL(kind=AbqRK) FUNCTION DegradationQuadratic(damage)
+!----------------------------     Quadratic    --------------------------------------
+
+!------------------------------------------------------------------------------------
+
+    PURE REAL(kind=AbqRK) FUNCTION DegradationQuadratic(damage,prop_df_beta,prop_df_alpha)
     ! quadratic degradation function: Miehe (2010)
 
       USE ABQINTERFACE
       USE FLOATNUMBERS
 
       IMPLICIT NONE
-      REAL(kind=AbqRK), INTENT(IN) :: damage
+      REAL(kind=AbqRK), INTENT(IN) :: damage, prop_df_beta, prop_df_alpha
       !
-      DegradationQuadratic = (one-damage)**2
+      DegradationQuadratic = (one-damage)**2 + 0.00001
 
     END FUNCTION DegradationQuadratic
 
 !------------------------------------------------------------------------------------
 
-    PURE REAL(kind=AbqRK) FUNCTION d_DegradationQuadratic_d_damage(damage)
+    PURE REAL(kind=AbqRK) FUNCTION d_DegradationQuadratic_d_damage(damage,prop_df_beta,prop_df_alpha)
     ! first derivative of quadratic degradation function: Miehe (2010)
 
       USE ABQINTERFACE
       USE FLOATNUMBERS
 
       IMPLICIT NONE
-      REAL(kind=AbqRK), INTENT(IN) :: damage
+      REAL(kind=AbqRK), INTENT(IN) :: damage, prop_df_beta, prop_df_alpha
       !
       d_DegradationQuadratic_d_damage = two*(damage-one)
 
@@ -102,14 +106,14 @@ MODULE DegradationModule
 
 !------------------------------------------------------------------------------------
 
-    PURE REAL(kind=AbqRK) FUNCTION d_DegradationQuadratic_d_damage_d_damage(damage)
+    PURE REAL(kind=AbqRK) FUNCTION d_DegradationQuadratic_d_damage_d_damage(damage,prop_df_beta,prop_df_alpha)
     ! second derivative of quadratic degradation function: Miehe (2010)
 
       USE ABQINTERFACE
       USE FLOATNUMBERS
 
       IMPLICIT NONE
-      REAL(kind=AbqRK), INTENT(IN) :: damage
+      REAL(kind=AbqRK), INTENT(IN) :: damage, prop_df_beta, prop_df_alpha
       !
       d_DegradationQuadratic_d_damage_d_damage = two
 

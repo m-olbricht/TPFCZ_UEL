@@ -58,6 +58,13 @@
       ! umat dummies
       layer = 1; kspt = 1
       celent = one; F0 = zero; F1 = zero
+      !
+      
+      IF (kinc .EQ. 1 .AND. jelem .EQ. 1) THEN
+		  WRITE(*,*) ''
+		  WRITE(*,*) 'u: ', u(:)
+		  WRITE(*,*) ''
+      END IF
 
       ! 'Wer bin ich, was kann ich ?'
 
@@ -189,15 +196,15 @@
         END DO
         
         
-        write(*,*) 'Perturbation UMAT call: kstep=', kstep, ' dtime=', dtime
-		CALL PerturbationTest( &
-			coords, u, du, D, nnode, ndofel, NDI, NSHR, ntens, njprop,  &
-			jprops, prop_thickness, isNlgeom,                            &
-			svars, numSDV, NGP, GPPos, GPWeight,                         &
-			predef_umat, dpred, npredf, cmname,                          &
-			props, nprops, pnewdt, celent,                               &
-			F0, F1, jelem, layer, kspt, kstep, kinc,                     &
-			time, dtime, amatrx)
+!~         WRITE(*,*) 'Perturbation UMAT call: kstep=', kstep, ' dtime=', dtime
+!~ 		CALL PerturbationTest( &
+!~ 			coords, u, du, D, nnode, ndofel, NDI, NSHR, ntens, njprop,  &
+!~ 			jprops, prop_thickness, isNlgeom,                            &
+!~ 			svars, numSDV, NGP, GPPos, GPWeight,                         &
+!~ 			predef_umat, dpred, npredf, cmname,                          &
+!~ 			props, nprops, pnewdt, celent,                               &
+!~ 			F0, F1, jelem, layer, kspt, kstep, kinc,                     &
+!~ 			time, dtime, amatrx)
         
 
         ! zero matrices for distorted elements
@@ -223,7 +230,20 @@
         rhs(1:ndofel,1) = zero
       END IF
       
-
+      IF (kinc .EQ. 1 .AND. jelem .EQ. 1) THEN
+		  WRITE(*,*) ''
+		  WRITE(*,'(A)') 'RHS: '
+		  DO i1 = 1, ndofel
+			WRITE(*,'(2X,I3,2X,ES14.6)') i1, rhs(i1,1)
+	      END DO
+		  !
+		  WRITE(*,'(A)') 'amatrx:'
+		  DO i1 = 1, ndofel
+		  	WRITE(*,'(100(ES14.6,1X))') (amatrx(i1,i2), i2 = 1, ndofel)
+		  END DO
+		  WRITE(*,*) ''
+      END IF
+      
       DEALLOCATE(Matrix_B, ddsddt, drplde, stran, dstran, Ct, stress)
 
       RETURN
@@ -237,6 +257,56 @@
 !------------------------------------------------------------------------------------!
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+!~ !------------------------------------------------------------------------------------!
+
+!~ ! === SCHRITT 2: d am Gausspunkt aus U interpolieren ===========
+!~ ! d_gp = Summe N_I(xgp) * U(d-DOF von Knoten I)
+!~ ! d-DOF-Indices für 4 Knoten (u1 u2 d T): 3, 7, 11, 15
+
+!~ subroutine get_d_gp(U, N, d_gp)
+!~   implicit none
+!~   double precision, intent(in)  :: U(16)   ! alle DOF des Elements
+!~   double precision, intent(in)  :: N(4)    ! Formfunktionswerte am GP
+!~   double precision, intent(out) :: d_gp
+
+!~   d_gp = N(1)*U(3) + N(2)*U(7) + N(3)*U(11) + N(4)*U(15)
+!~   d_gp = max(0.d0, min(1.d0, d_gp))        ! Klemmen [0,1]
+!~ end subroutine
+!~ ! =============================================================
+
+!~ !------------------------------------------------------------------------------------!
+
+!~ ! === SCHRITT 4: Phasenfeld-Residuum und Jacobi =================
+!~ ! Lokaler Anteil (ohne Gradiententerm, der kommt aus ∫∇N·∇N dV):
+!~ !
+!~ !   R_d = Gc/l * d  -  2*(1-d)*H        (AT2-Modell)
+!~ !   K_dd = Gc/l  +  2*H                 (immer > 0)
+!~ !
+!~ ! Gradientenanteil separat: Gc*l * B_d^T * B_d  (in deine B-Matrix)
+
+!~ subroutine pff_local(d_gp, H_new, Gc, l_pf, R_d, K_dd)
+!~   implicit none
+!~   double precision, intent(in)  :: d_gp, H_new, Gc, l_pf
+!~   double precision, intent(out) :: R_d, K_dd
+
+!~   double precision :: gc_over_l
+!~   gc_over_l = Gc / l_pf
+
+!~   R_d  = gc_over_l * d_gp  -  2.d0*(1.d0 - d_gp)*H_new
+!~   K_dd = gc_over_l          +  2.d0*H_new
+
+!~   ! Sanity check
+!~   if (.not.(R_d  > -1.d300 .and. R_d  < 1.d300)) then
+!~     write(6,'(a,2es14.4)') '[INF] R_d! d_gp, H_new =', d_gp, H_new
+!~     call xit
+!~   end if
+!~   if (K_dd <= 0.d0) then
+!~     write(6,'(a,es14.4)') '[ERR] K_dd <= 0 ! K_dd =', K_dd
+!~     call xit
+!~   end if
+!~ end subroutine
+!~ ! =============================================================
 
 !------------------------------------------------------------------------------------!
 
